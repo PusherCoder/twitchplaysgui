@@ -248,6 +248,9 @@ class ComputerAction:
         self.mouseHoldTime = None
         self.mouseHoldTimeSave = '500'
         self.mouseRelative = IntVar()
+
+        self.chance = None
+        self.chanceSave = '100'
         
         self.waitTime = None
         self.waitTimeSave = '500'
@@ -442,6 +445,24 @@ class ComputerAction:
             Button( l_upperMouseFrame, text='X', height=1, command=self.f_signalDeletion, bg='red' ).pack( side=RIGHT, padx=10 )
         
         #----------------------------------------------------------------------------
+        # If this is a chance action, generate the chance interface
+        #----------------------------------------------------------------------------
+        elif self.actionType == 'chance':
+            l_frame.config( bg='darkgoldenrod2' )
+            #------------------------------------------------------------------------
+            # Set up a text box for the wait duration
+            #------------------------------------------------------------------------
+            Label( l_frame, text='Chance Percent (0-100):', bg='darkgoldenrod2' ).pack( side=LEFT )
+            self.chance = Text( l_frame, width=5, height=1, bg='darkgoldenrod2' )
+            self.chance.pack( side=LEFT ) 
+            self.chance.insert( END, self.chanceSave )
+            
+            #------------------------------------------------------------------------
+            # Add a button that allows us to delete the action
+            #------------------------------------------------------------------------
+            Button( l_frame, text='X', height=1, command=self.f_signalDeletion, bg='red' ).pack( side=RIGHT, padx=10 )
+        
+        #----------------------------------------------------------------------------
         # If this is any other action, assume its a wait interface
         #----------------------------------------------------------------------------
         else:
@@ -479,6 +500,7 @@ class ComputerAction:
                 self.f_releaseKey( G_KEY_DICTIONARY[ self.keyName.get() ] )
             elif self.keyButtonValue.get() == 'tap':
                 self.f_tapKey( G_KEY_DICTIONARY[ self.keyName.get() ], int(self.keyTapTime.get( '1.0', 'end-1c' )) )
+            return True
         
         #----------------------------------------------------------------------------
         # Perform mouse actions
@@ -492,12 +514,24 @@ class ComputerAction:
                 pydirectinput.middleClick( x=(int(self.mouseX.get( '1.0', 'end-1c' )) if self.mouseX.get( '1.0', 'end-1c' ) != '' else None), y=(int(self.mouseY.get( '1.0', 'end-1c' )) if self.mouseY.get( '1.0', 'end-1c' ) != '' else None) )
             elif self.mouseButtonValue.get() == 'move':
                 pydirectinput.moveRel( xOffset=(int(self.mouseX.get( '1.0', 'end-1c' )) if self.mouseX.get( '1.0', 'end-1c' ) != '' else 0), yOffset=(int(self.mouseY.get( '1.0', 'end-1c' )) if self.mouseY.get( '1.0', 'end-1c' ) != '' else 0), relative=self.mouseRelative.get() )
+            return True
         
+        #----------------------------------------------------------------------------
+        # Perform chance actions
+        #----------------------------------------------------------------------------
+        elif self.actionType == 'chance':
+            l_percent = int(self.chance.get( '1.0', 'end-1c' ))
+            if random.randint(0, 100) < l_percent:
+                return True
+            else:
+                return False
+
         #----------------------------------------------------------------------------
         # Perform wait actions
         #----------------------------------------------------------------------------
         elif self.actionType == 'wait':
-            time.sleep( int(self.waitTime.get) / 1000 )
+            time.sleep( int(self.waitTime.get( '1.0', 'end-1c' )) / 1000 )
+            return True
         
     #--------------------------------------------------------------------------------
     # CLASS PROCEDURE NAME: f_save
@@ -512,6 +546,12 @@ class ComputerAction:
         #----------------------------------------------------------------------------
         if self.keyTapTime != None:
             self.keyTapTimeSave = self.keyTapTime.get( '1.0', 'end-1c' )
+            
+        #----------------------------------------------------------------------------
+        # Save off the chance percentage
+        #----------------------------------------------------------------------------
+        if self.chance != None:
+            self.chanceSave = self.chance.get( '1.0', 'end-1c' )
             
         #----------------------------------------------------------------------------
         # Save off the wait duration
@@ -556,6 +596,8 @@ class ComputerAction:
             l_returnData.append( self.mouseYSave )
             l_returnData.append( self.mouseHoldTimeSave )
             l_returnData.append( self.mouseRelative.get() )
+        elif self.actionType == 'chance':
+            l_returnData.append( self.chanceSave )
         elif self.actionType == 'wait':
             l_returnData.append( self.waitTimeSave )
             
@@ -616,6 +658,16 @@ class TwitchCommand:
                 self.actionList.append( ComputerAction( i_action[0], i_action[1:] ) )
     
     #--------------------------------------------------------------------------------
+    # CLASS PROCEDURE NAME: f_handleAddChance
+    #
+    # DESCRIPTION:
+    #   Add a Chance action to the action list.
+    #--------------------------------------------------------------------------------
+    def f_handleAddChance( self ):
+        self.actionList.append( ComputerAction( 'chance' ) )
+        f_redraw()
+    
+    #--------------------------------------------------------------------------------
     # CLASS PROCEDURE NAME: f_handleAddKeyboard
     #
     # DESCRIPTION:
@@ -654,17 +706,20 @@ class TwitchCommand:
     #--------------------------------------------------------------------------------
     def f_check( self, p_message ):
         #----------------------------------------------------------------------------
-        # Check chat message against command text
+        # Get the full list of commands from the text field and convert to an array
         #----------------------------------------------------------------------------
-        l_command = self.chatText.get( '1.0', 'end-1c' )
+        l_commandList = self.chatText.get( '1.0', 'end-1c' ).split('/')
+        l_commandList = [i_command.strip() for i_command in l_commandList]
         
         #----------------------------------------------------------------------------
         # If there is a match, perform the list of actions assigned to this command
         #----------------------------------------------------------------------------
-        if l_command == p_message:
+        if p_message in l_commandList:
             print( 'Command Correctly Received' )
             for i_action in self.actionList:
-                i_action.f_process()
+                l_return = i_action.f_process()
+                if l_return == False:
+                    break
     
     #--------------------------------------------------------------------------------
     # CLASS PROCEDURE NAME: f_draw
@@ -683,23 +738,26 @@ class TwitchCommand:
         #----------------------------------------------------------------------------
         # Create the frame for the command interface and pack it
         #----------------------------------------------------------------------------
-        l_frame = Frame( p_parentFrame, height=10 )
-        l_frame.pack( side=TOP, fill='x' )
+        l_upperFrame = Frame( p_parentFrame, height=10 )
+        l_upperFrame.pack( side=TOP, fill='x' )
+        l_lowerFrame = Frame( p_parentFrame, height=10 )
+        l_lowerFrame.pack( side=TOP, fill='x' )
         
         #----------------------------------------------------------------------------
         # Add a label and text box for the command text
         #----------------------------------------------------------------------------
-        Label( l_frame, text='Chat Text:' ).pack( side=LEFT )
-        self.chatText = Text( l_frame, width=10, height=1 )
+        Label( l_upperFrame, text='Chat Text (backslash separated):' ).pack( side=LEFT )
+        self.chatText = Text( l_upperFrame, width=45, height=1 )
         self.chatText.pack( side=LEFT )
         self.chatText.insert( END, self.savedText )
         
         #----------------------------------------------------------------------------
         # Add buttons to add actions to the action list for this command
         #----------------------------------------------------------------------------
-        Button( l_frame, text='Add Keyboard Action', width=17, height=1, command=self.f_handleAddKeyboard ).pack( side=LEFT )
-        Button( l_frame, text='Add Mouse Action', width=17, height=1, command=self.f_handleAddMouse ).pack( side=LEFT )
-        Button( l_frame, text='Add Wait', width=17, height=1, command=self.f_handleAddWait ).pack( side=LEFT )
+        Button( l_lowerFrame, text='Add Keyboard Action', width=17, height=1, command=self.f_handleAddKeyboard ).pack( side=LEFT )
+        Button( l_lowerFrame, text='Add Mouse Action', width=17, height=1, command=self.f_handleAddMouse ).pack( side=LEFT )
+        Button( l_lowerFrame, text='Add Wait', width=17, height=1, command=self.f_handleAddWait ).pack( side=LEFT )
+        Button( l_lowerFrame, text='Add Chance', width=17, height=1, command=self.f_handleAddChance ).pack( side=LEFT )
         
         #----------------------------------------------------------------------------
         # Draw the action list
@@ -709,7 +767,7 @@ class TwitchCommand:
         #----------------------------------------------------------------------------
         # Add a button that allows us to delete the action
         #----------------------------------------------------------------------------
-        Button( l_frame, text='X', height=1, command=self.f_signalDeletion, bg='red' ).pack( side=RIGHT, padx=10 )
+        Button( l_upperFrame, text='X', height=1, command=self.f_signalDeletion, bg='red' ).pack( side=RIGHT, padx=10 )
 
         return True
         
