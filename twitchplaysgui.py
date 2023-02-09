@@ -9,6 +9,7 @@
 #
 # Designed by SlipstreamWorks
 #
+# Updates available at https://github.com/PusherCoder/twitchplaysgui
 # Based on code provided by DougDoug (https://www.dougdoug.com/twitchplays)
 #
 # Distributed under the GNU General Public License v3.0
